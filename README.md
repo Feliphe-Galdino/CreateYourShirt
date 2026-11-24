@@ -1,8 +1,10 @@
 # Criador de Camisas
 
+No ar em: **https://feliphe-galdino.github.io/CreateYourShirt/** (GitHub Pages, branch `gh-pages`). O QR code para o site está em `qrcode.png` e `qrcode.svg`.
+
 Site estático (um único `index.html`) para montar uma camisa de time: nome, número, tamanho, fonte, cores, padrão, gola, escudo e patrocínio. Mostra frente e costas, salva as camisas no navegador (localStorage), baixa a imagem em PNG e gera um link que abre a mesma camisa.
 
-## Publicar (Render, grátis)
+## Alternativa: publicar no Render (grátis)
 
 O repositório já tem o `render.yaml`, igual ao da pizzaria. Ele cria um **Static Site** no plano gratuito, que não "dorme" e já vem com HTTPS.
 
@@ -13,7 +15,9 @@ O repositório já tem o `render.yaml`, igual ao da pizzaria. Ele cria um **Stat
 
 Cada novo push nessa branch publica sozinho.
 
-Se o Render der outro endereço (porque o nome já estava em uso), troque `criador-de-camisas.onrender.com` nas 3 linhas de `og:image`, `og:url` e `canonical` no começo do `index.html`.
+Para atualizar o site no GitHub Pages, faça push na branch `gh-pages`.
+
+Se usar o Render, troque `feliphe-galdino.github.io/CreateYourShirt/` nas 3 linhas de `og:image`, `og:url` e `canonical` no começo do `index.html`.
 
 Arquivos:
 
