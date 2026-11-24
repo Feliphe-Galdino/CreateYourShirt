@@ -2,17 +2,22 @@
 
 Site estático (um único `index.html`) para montar uma camisa de time: nome, número, tamanho, fonte, cores, padrão, gola, escudo e patrocínio. Mostra frente e costas, salva as camisas no navegador (localStorage), baixa a imagem em PNG e gera um link que abre a mesma camisa.
 
-## Publicar
+## Publicar (Render, grátis)
 
-Não precisa de build nem de servidor. Qualquer hospedagem estática serve:
+O repositório já tem o `render.yaml`, igual ao da pizzaria. Ele cria um **Static Site** no plano gratuito, que não "dorme" e já vem com HTTPS.
 
-- **GitHub Pages:** Settings → Pages → Deploy from a branch → escolha a branch e a pasta `/ (root)`.
-- **Netlify / Vercel / Cloudflare Pages:** importe o repositório; sem comando de build, pasta de publicação `.`.
+1. Entre em https://dashboard.render.com com a conta do GitHub.
+2. **New → Blueprint** e escolha o repositório `CreateYourShirt`.
+3. Em *Branch*, escolha a branch onde está o site (ou a `main`, depois de fazer o merge).
+4. Clique em **Apply**. Em cerca de 1 minuto o site fica no ar em `https://criador-de-camisas.onrender.com`.
+
+Cada novo push nessa branch publica sozinho.
+
+Se o Render der outro endereço (porque o nome já estava em uso), troque `criador-de-camisas.onrender.com` nas 3 linhas de `og:image`, `og:url` e `canonical` no começo do `index.html`.
 
 Arquivos:
 
 - `index.html`: o app inteiro (HTML, CSS e JS)
 - `fonts/`: fontes hospedadas localmente (Anton, Barlow, Barlow Condensed, Bebas Neue, Graduate, Russo One, Teko, todas licenciadas sob a SIL Open Font License)
 - `favicon.svg`, `share.png`: ícone da aba e imagem de prévia para redes sociais
-
-Depois de publicar, troque `share.png` em `og:image` pelo endereço completo (ex.: `https://seusite.com/share.png`) para a prévia aparecer no WhatsApp e nas redes.
+- `render.yaml`: configuração da hospedagem no Render
