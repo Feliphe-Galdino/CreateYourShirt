@@ -989,11 +989,37 @@ function carregarPublicas() {
   if (!NUVEM) return Promise.resolve();
   if (!carregandoP) {
     carregandoP = api('camisas?select=id,dados,criada_em,atualizada_em&order=atualizada_em.desc&limit=200')
-      .then(linhas => { loja.publicas = Array.isArray(linhas) ? linhas.map(deLinha) : []; loja.erroNuvem = false; })
+      .then(linhas => { loja.publicas = Array.isArray(linhas) ? linhas.map(deLinha) : []; loja.erroNuvem = false; publicarAntigas(); })
       .catch(() => { loja.erroNuvem = true; })
       .finally(() => { carregandoP = null; atualizarLista(); });
   }
   return carregandoP;
+}
+
+// Camisas salvas só neste navegador (antes da galeria existir) são publicadas uma vez, em ordem de criação.
+let publicandoAntigas = false;
+async function publicarAntigas() {
+  if (!NUVEM || publicandoAntigas || !loja.local.length) return;
+  publicandoAntigas = true;
+  let enviadas = 0;
+  try {
+    const fila = loja.local.slice().sort((a, b) => a.criadaEm - b.criadaEm);
+    for (const it of fila) {
+      const token = novoToken();
+      const linha = await api('rpc/criar_camisa', { p_dados: dadosDe(it), p_token: token });
+      if (!linha || typeof linha.id !== 'string') throw new Error('resposta inválida');
+      loja.donos[linha.id] = token; gravarDonos();
+      if (editandoId === it.id) editandoId = linha.id;
+      loja.local = loja.local.filter(x => x.id !== it.id); gravarLocal();
+      loja.publicas = [deLinha(Object.assign({}, linha, { dados: dadosDe(it) }))].concat(loja.publicas || []);
+      enviadas++;
+    }
+  } catch (e) { /* tenta de novo na próxima visita */ }
+  publicandoAntigas = false;
+  if (enviadas) {
+    atualizarLista();
+    aviso(enviadas === 1 ? 'Sua camisa salva antes foi publicada em Camisas criadas.' : `Suas ${enviadas} camisas salvas antes foram publicadas em Camisas criadas.`, { rotulo: 'Ver', fn: () => irPara('criadas') });
+  }
 }
 
 function ehMinha(id) { return !NUVEM || tem(loja.donos, id); }
