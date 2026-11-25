@@ -332,7 +332,7 @@ input[type="text"]:focus-visible { outline-offset: 0; }
 .btn.perigo { color: var(--destaque); }
 .btn.pequeno { padding: 7px 12px; font-size: 0.88rem; }
 
-/* Minhas camisas */
+/* Camisas criadas */
 .minhas { max-width: 1180px; margin: 0 auto; padding: 24px 20px 56px; }
 .cab-minhas { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
 .cab-minhas h1 {
@@ -346,6 +346,8 @@ input[type="text"]:focus-visible { outline-offset: 0; }
 }
 .status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--suave); }
 .status[data-modo="conta"]::before { background: #2DA160; }
+.status[data-modo="erro"]::before { background: var(--destaque); }
+.selo { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; background: var(--campo); border: 1px solid var(--linha); color: var(--tinta); font-size: 0.78rem; font-weight: 600; }
 .status[data-modo="memoria"]::before { background: #D99A0B; }
 .grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 18px; }
 .cartao {
@@ -438,7 +440,7 @@ input[type="text"]:focus-visible { outline-offset: 0; }
     </div>
     <nav class="abas" role="tablist" aria-label="Seções">
       <button class="aba" role="tab" id="aba-criar" aria-controls="painel-criar" aria-selected="true">Criar camisa</button>
-      <button class="aba" role="tab" id="aba-minhas" aria-controls="painel-minhas" aria-selected="false" tabindex="-1">Minhas camisas <span class="contagem" id="contagem">0</span></button>
+      <button class="aba" role="tab" id="aba-minhas" aria-controls="painel-minhas" aria-selected="false" tabindex="-1">Camisas criadas <span class="contagem" id="contagem">0</span></button>
     </nav>
   </div>
 </header>
@@ -457,7 +459,7 @@ input[type="text"]:focus-visible { outline-offset: 0; }
 
       <form class="controles" id="form" novalidate>
         <div class="editando" id="editando" hidden>
-          <span>Editando a camisa salva <strong id="editando-nome"></strong></span>
+          <span>Editando a camisa <strong id="editando-nome"></strong></span>
           <button type="button" class="btn pequeno" id="btn-nova">Começar uma nova</button>
         </div>
 
@@ -539,26 +541,27 @@ input[type="text"]:focus-visible { outline-offset: 0; }
 
   <section id="painel-minhas" class="minhas" role="tabpanel" aria-labelledby="aba-minhas" hidden>
     <div class="cab-minhas">
-      <h1>Minhas camisas</h1>
+      <h1>Camisas criadas</h1>
       <span class="status" id="status" data-modo="local">Salvas neste navegador</span>
     </div>
     <div class="grade" id="grade"></div>
     <div class="vazio" id="vazio">
-      <strong>Nenhuma camisa salva ainda</strong>
-      <p>Monte a sua camisa na aba Criar camisa e toque em Salvar camisa. Ela aparece aqui, pronta para baixar como imagem PNG.</p>
+      <strong id="vazio-titulo">Nenhuma camisa criada ainda</strong>
+      <p id="vazio-texto">Monte a sua camisa na aba Criar camisa e toque em Salvar camisa. Ela aparece aqui, pronta para baixar como imagem PNG.</p>
       <button type="button" class="btn primario" id="btn-ir-criar">Criar camisa</button>
     </div>
   </section>
 </main>
 
 <footer class="rodape">
-  <p>As camisas ficam guardadas neste navegador. Para levar para outro aparelho, use <strong>Copiar link</strong> ou baixe o PNG.</p>
+  <p id="rodape-texto">As camisas ficam guardadas neste navegador. Para levar para outro aparelho, use <strong>Copiar link</strong> ou baixe o PNG.</p>
 </footer>
 
 <div class="aviso" id="aviso" role="status" aria-live="polite"></div>
 
 <noscript><p style="padding:20px">Ative o JavaScript para usar o criador de camisas.</p></noscript>
 
+<script src="config.js"></script>
 <script>
 (() => {
 'use strict';
@@ -946,16 +949,92 @@ function gravarLocal() {
   try { localStorage.setItem(CHAVE_LOCAL, JSON.stringify(loja.local)); loja.lsOk = true; }
   catch (e) { loja.lsOk = false; }
 }
-function itens() { return loja.local.slice().sort((a, b) => b.atualizadaEm - a.atualizadaEm); }
-function porId(id) { return loja.local.find(i => i.id === id); }
-function salvarItem(it) {
-  const i = loja.local.findIndex(x => x.id === it.id);
-  if (i >= 0) loja.local[i] = it; else loja.local.push(it);
-  gravarLocal(); atualizarLista();
+/* Galeria pública: com config.js preenchido, as camisas vão para o Supabase e todos veem.
+   Sem configuração, tudo continua só neste navegador. */
+const NUVEM = (() => {
+  const c = window.CAMISAS_NUVEM || {};
+  const url = typeof c.url === 'string' ? c.url.trim().replace(/\/+$/, '') : '';
+  const chave = typeof c.chave === 'string' ? c.chave.trim() : '';
+  return /^https:\/\//.test(url) && chave ? { url, chave } : null;
+})();
+const CAMPOS = Object.keys(INICIAL);
+const CHAVE_DONOS = 'criador-camisas:donos:v1';
+loja.publicas = null; loja.erroNuvem = false; loja.donos = {};
+
+function lerDonos() {
+  try { const o = JSON.parse(localStorage.getItem(CHAVE_DONOS) || '{}'); return o && typeof o === 'object' && !Array.isArray(o) ? o : {}; }
+  catch (e) { return {}; }
 }
-function excluirItem(id) {
-  loja.local = loja.local.filter(x => x.id !== id);
-  gravarLocal(); atualizarLista();
+function gravarDonos() { try { localStorage.setItem(CHAVE_DONOS, JSON.stringify(loja.donos)); } catch (e) {} }
+function novoToken() {
+  const a = new Uint8Array(24); crypto.getRandomValues(a);
+  return Array.from(a, b => b.toString(16).padStart(2, '0')).join('');
+}
+async function api(caminho, corpo) {
+  const h = { apikey: NUVEM.chave, 'Content-Type': 'application/json' };
+  if (!NUVEM.chave.startsWith('sb_')) h.Authorization = 'Bearer ' + NUVEM.chave;
+  const r = await fetch(NUVEM.url + '/rest/v1/' + caminho, corpo === undefined ? { headers: h } : { method: 'POST', headers: h, body: JSON.stringify(corpo) });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const txt = await r.text();
+  return txt ? JSON.parse(txt) : null;
+}
+function dadosDe(it) { const o = {}; for (const k of CAMPOS) o[k] = it[k]; return o; }
+function deLinha(l) {
+  return limpar(Object.assign({}, l && l.dados, {
+    id: l && l.id, criadaEm: Date.parse(l && l.criada_em) || 0, atualizadaEm: Date.parse(l && l.atualizada_em) || 0,
+  }));
+}
+let carregandoP = null;
+function carregarPublicas() {
+  if (!NUVEM) return Promise.resolve();
+  if (!carregandoP) {
+    carregandoP = api('camisas?select=id,dados,criada_em,atualizada_em&order=atualizada_em.desc&limit=200')
+      .then(linhas => { loja.publicas = Array.isArray(linhas) ? linhas.map(deLinha) : []; loja.erroNuvem = false; })
+      .catch(() => { loja.erroNuvem = true; })
+      .finally(() => { carregandoP = null; atualizarLista(); });
+  }
+  return carregandoP;
+}
+
+function ehMinha(id) { return !NUVEM || tem(loja.donos, id); }
+function itens() {
+  if (NUVEM) return loja.publicas || [];
+  return loja.local.slice().sort((a, b) => b.atualizadaEm - a.atualizadaEm);
+}
+function porId(id) { return itens().find(i => i.id === id); }
+
+async function salvarItem(it) {
+  if (!NUVEM) {
+    const i = loja.local.findIndex(x => x.id === it.id);
+    if (i >= 0) loja.local[i] = it; else loja.local.push(it);
+    gravarLocal(); atualizarLista();
+    return it;
+  }
+  const dados = dadosDe(it);
+  let linha;
+  if (tem(loja.donos, it.id)) {
+    linha = await api('rpc/editar_camisa', { p_id: it.id, p_token: loja.donos[it.id], p_dados: dados });
+  } else {
+    const token = novoToken();
+    linha = await api('rpc/criar_camisa', { p_dados: dados, p_token: token });
+    if (!linha || typeof linha.id !== 'string') throw new Error('resposta inválida');
+    loja.donos[linha.id] = token; gravarDonos();
+  }
+  const nova = deLinha(Object.assign({}, linha, { dados }));
+  loja.publicas = [nova].concat((loja.publicas || []).filter(x => x.id !== nova.id));
+  atualizarLista();
+  return nova;
+}
+async function excluirItem(id) {
+  if (!NUVEM) {
+    loja.local = loja.local.filter(x => x.id !== id);
+    gravarLocal(); atualizarLista();
+    return;
+  }
+  await api('rpc/excluir_camisa', { p_id: id, p_token: loja.donos[id] });
+  delete loja.donos[id]; gravarDonos();
+  loja.publicas = (loja.publicas || []).filter(x => x.id !== id);
+  atualizarLista();
 }
 
 /* ---------- Download ---------- */
@@ -1175,10 +1254,10 @@ function atualizarControles(manterTexto) {
     if (v) { outra.style.setProperty('--c', v); if (inp.value.toUpperCase() !== v) inp.value = v.toLowerCase(); }
   }
   for (const b of $$('.vista button')) b.setAttribute('aria-pressed', String(b.dataset.vista === vista));
-  const editando = editandoId && porId(editandoId);
+  const editando = editandoId && ehMinha(editandoId) && porId(editandoId);
   $('#editando').hidden = !editando;
   if (editando) $('#editando-nome').textContent = rotulo(editando);
-  $('#btn-salvar').textContent = editando ? 'Salvar alterações' : 'Salvar camisa';
+  if (!salvando) $('#btn-salvar').textContent = editando ? 'Salvar alterações' : (NUVEM ? 'Publicar camisa' : 'Salvar camisa');
   $('#btn-salvar-nova').hidden = !editando;
 }
 
@@ -1195,29 +1274,45 @@ function desenharMiniPadroes() {
 }
 
 /* ---------- Salvar ---------- */
+let salvando = false;
 async function salvar(comoNova) {
+  if (salvando) return;
   const agora = Date.now();
-  const existente = !comoNova && editandoId ? porId(editandoId) : null;
+  const existente = !comoNova && editandoId && ehMinha(editandoId) ? porId(editandoId) : null;
   const it = limpar(Object.assign({}, cfg, {
     id: existente ? existente.id : novoId(),
     criadaEm: existente ? existente.criadaEm : agora,
     atualizadaEm: agora,
   }));
-  editandoId = it.id;
-  salvarItem(it);
-  atualizarControles(true);
-  aviso(existente ? 'Alterações salvas em Minhas camisas.' : 'Camisa salva em Minhas camisas.', { rotulo: 'Ver', fn: () => irPara('minhas') });
+  const btn = $('#btn-salvar'), btnNova = $('#btn-salvar-nova');
+  salvando = true; btn.disabled = true; btnNova.disabled = true;
+  if (NUVEM) btn.textContent = 'Publicando…';
+  try {
+    const salvo = await salvarItem(it);
+    editandoId = salvo.id;
+    const onde = NUVEM ? 'Camisa publicada em Camisas criadas.' : 'Camisa salva em Camisas criadas.';
+    aviso(existente ? 'Alterações salvas.' : onde, { rotulo: 'Ver', fn: () => irPara('criadas') });
+  } catch (e) {
+    aviso('Não foi possível publicar agora. Confira a internet e tente de novo.');
+  } finally {
+    salvando = false; btn.disabled = false; btnNova.disabled = false;
+    atualizarControles(true);
+  }
 }
 
-/* ---------- Lista "Minhas camisas" ---------- */
+/* ---------- Lista "Camisas criadas" ---------- */
 let confirmandoId = null;
 function atualizarLista() {
   const lista = itens();
   $('#contagem').textContent = lista.length;
   const st = $('#status');
-  if (loja.lsOk) { st.dataset.modo = 'local'; st.textContent = 'Salvas neste navegador'; }
+  if (NUVEM) {
+    if (loja.erroNuvem) { st.dataset.modo = 'erro'; st.textContent = 'Sem conexão com a galeria agora'; }
+    else if (!loja.publicas) { st.dataset.modo = 'local'; st.textContent = 'Carregando…'; }
+    else { st.dataset.modo = 'conta'; st.textContent = 'Visíveis para todo mundo'; }
+  } else if (loja.lsOk) { st.dataset.modo = 'local'; st.textContent = 'Salvas neste navegador'; }
   else { st.dataset.modo = 'memoria'; st.textContent = 'Salvas só até fechar esta página'; }
-  if (editandoId && !lista.some(i => i.id === editandoId)) editandoId = null;
+  if (editandoId && (!NUVEM || loja.publicas) && !lista.some(i => i.id === editandoId)) editandoId = null;
   atualizarControles(true);
   if ($('#painel-minhas').hidden) return;
   renderGrade(lista);
@@ -1227,6 +1322,11 @@ function renderGrade(lista = itens()) {
   const grade = $('#grade');
   grade.textContent = '';
   $('#vazio').hidden = lista.length > 0;
+  const carregando = NUVEM && !loja.publicas && !loja.erroNuvem;
+  $('#vazio-titulo').textContent = carregando ? 'Carregando camisas…' : (NUVEM && loja.erroNuvem && !loja.publicas ? 'Não foi possível carregar as camisas' : 'Nenhuma camisa criada ainda');
+  $('#vazio-texto').textContent = carregando ? 'Só um instante.' : (NUVEM && loja.erroNuvem && !loja.publicas
+    ? 'Confira a internet e abra esta aba de novo.'
+    : `Monte a sua camisa na aba Criar camisa e toque em ${NUVEM ? 'Publicar camisa' : 'Salvar camisa'}. Ela aparece aqui${NUVEM ? ' para todo mundo' : ''}, pronta para baixar como imagem PNG.`);
   for (const it of lista) {
     const art = document.createElement('article'); art.className = 'cartao';
     const vit = document.createElement('div'); vit.className = 'vitrine';
@@ -1240,22 +1340,37 @@ function renderGrade(lista = itens()) {
     tit.append(h, n);
     const meta = document.createElement('p'); meta.className = 'meta';
     const data = it.atualizadaEm ? new Date(it.atualizadaEm).toLocaleDateString('pt-BR') : '';
-    meta.textContent = `Tam. ${it.tamanho} · fonte ${FONTES[it.fonte].nome.toLowerCase()}${data ? ' · salva em ' + data : ''}`;
+    const minha = ehMinha(it.id);
+    meta.textContent = `Tam. ${it.tamanho} · fonte ${FONTES[it.fonte].nome.toLowerCase()}${data ? ' · ' + data : ''}`;
+    if (NUVEM && minha) { const sl = document.createElement('span'); sl.className = 'selo'; sl.textContent = 'Sua'; meta.append(sl); }
     corpo.append(tit, meta);
 
     if (confirmandoId === it.id) {
       const conf = document.createElement('div'); conf.className = 'confirmar';
       const t = document.createElement('span'); t.textContent = 'Excluir esta camisa?';
-      const sim = botao('Excluir', 'btn pequeno perigo', () => { confirmandoId = null; excluirItem(it.id); aviso('Camisa excluída.'); });
+      const sim = botao('Excluir', 'btn pequeno perigo', async ev => {
+        ev.currentTarget.disabled = true;
+        try { await excluirItem(it.id); confirmandoId = null; aviso('Camisa excluída.'); }
+        catch (e) { confirmandoId = null; renderGrade(); aviso('Não foi possível excluir agora. Tente de novo em instantes.'); }
+      });
       const nao = botao('Cancelar', 'btn pequeno', () => { confirmandoId = null; renderGrade(); });
       conf.append(t, sim, nao); corpo.append(conf);
       setTimeout(() => nao.focus(), 0);
     } else {
       const bt = document.createElement('div'); bt.className = 'botoes';
       const bx = botao('Baixar PNG', 'btn pequeno primario', ev => baixar(it, ev.currentTarget));
-      const ed = botao('Editar', 'btn pequeno', () => { cfg = limpar(Object.assign({}, it)); editandoId = it.id; vista = 'costas'; irPara('criar'); sincronizar(); });
-      const ex = botao('Excluir', 'btn pequeno perigo', () => { confirmandoId = it.id; renderGrade(); });
-      bt.append(bx, ed, ex); corpo.append(bt);
+      if (minha) {
+        const ed = botao('Editar', 'btn pequeno', () => { cfg = limpar(Object.assign({}, it)); editandoId = it.id; vista = 'costas'; irPara('criar'); sincronizar(); });
+        const ex = botao('Excluir', 'btn pequeno perigo', () => { confirmandoId = it.id; renderGrade(); });
+        bt.append(bx, ed, ex);
+      } else {
+        const base = botao('Usar como base', 'btn pequeno', () => {
+          cfg = limpar(Object.assign({}, it, { id: novoId() })); editandoId = null; vista = 'costas';
+          irPara('criar'); sincronizar(); aviso('Camisa copiada para o editor. Mude o que quiser e publique a sua.');
+        });
+        bt.append(bx, base);
+      }
+      corpo.append(bt);
     }
     art.append(vit, corpo);
     grade.append(art);
@@ -1271,21 +1386,22 @@ function botao(texto, classe, fn) {
 
 /* ---------- Abas ---------- */
 function mostrarAba(nome) {
-  const minhas = nome === 'minhas';
+  const minhas = nome === 'criadas';
   $('#painel-criar').hidden = minhas; $('#painel-minhas').hidden = !minhas;
   const ac = $('#aba-criar'), am = $('#aba-minhas');
   ac.setAttribute('aria-selected', String(!minhas)); am.setAttribute('aria-selected', String(minhas));
   ac.tabIndex = minhas ? -1 : 0; am.tabIndex = minhas ? 0 : -1;
-  if (minhas) renderGrade(); else agendarDesenho();
+  if (minhas) { renderGrade(); carregarPublicas(); } else agendarDesenho();
 }
 function irPara(nome) {
   mostrarAba(nome);
   try { if (location.hash !== '#' + nome) history.replaceState(null, '', '#' + nome); } catch (e) {}
   window.scrollTo(0, 0);
 }
-window.addEventListener('hashchange', () => mostrarAba(location.hash === '#minhas' ? 'minhas' : 'criar'));
+const abaDoHash = () => (location.hash === '#criadas' || location.hash === '#minhas' ? 'criadas' : 'criar');
+window.addEventListener('hashchange', () => mostrarAba(abaDoHash()));
 $('#aba-criar').addEventListener('click', () => irPara('criar'));
-$('#aba-minhas').addEventListener('click', () => irPara('minhas'));
+$('#aba-minhas').addEventListener('click', () => irPara('criadas'));
 $('.abas').addEventListener('keydown', e => {
   if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
   const alvo = document.activeElement === $('#aba-criar') ? $('#aba-minhas') : $('#aba-criar');
@@ -1302,6 +1418,11 @@ $('#btn-link').addEventListener('click', copiarLink);
 $('#btn-nova').addEventListener('click', () => { editandoId = null; cfg = limpar(Object.assign({}, INICIAL)); vista = 'costas'; sincronizar(); });
 
 loja.local = lerLocal();
+loja.donos = lerDonos();
+if (NUVEM) {
+  $('#rodape-texto').textContent = 'Ao publicar, a camisa aparece em Camisas criadas para todo mundo ver e baixar. Só quem criou, neste aparelho, pode editar ou excluir.';
+  carregarPublicas();
+}
 {
   const param = new URLSearchParams(location.search).get('c');
   const vindo = param && decodificar(param);
@@ -1313,7 +1434,7 @@ loja.local = lerLocal();
 }
 atualizarLista();
 sincronizar();
-mostrarAba(location.hash === '#minhas' ? 'minhas' : 'criar');
+mostrarAba(abaDoHash());
 
 if ('ResizeObserver' in window) new ResizeObserver(() => agendarDesenho()).observe(previa);
 else window.addEventListener('resize', agendarDesenho);
